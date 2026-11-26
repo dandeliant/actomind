@@ -4,6 +4,7 @@ import './core.test.mjs';
 import './audio.test.mjs';
 import './app.test.mjs';
 import './server.test.mjs';
+import './voices.test.mjs';
 
 const failed = await run(process.argv[2]);
 process.exit(failed ? 1 : 0);

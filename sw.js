@@ -4,6 +4,7 @@ importScripts('sw-manifest.js');
 
 const CACHE = 'actomind-' + ACTOMIND_VERSION;
 const scopeUrl = (p) => new URL(p, self.registration.scope).href;
+const DEV = ['localhost', '127.0.0.1', '[::1]'].includes(self.location.hostname);
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -40,6 +41,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);
       const cached = await cache.match(scopeUrl('index.html')) || await cache.match(scopeUrl('./'));
+      if (DEV) { try { return await fetch(req); } catch (e) { if (cached) return cached; throw e; } }
       if (cached) {
         // refresh in background
         event.waitUntil(fetch(req).then((res) => { if (res.ok) cache.put(scopeUrl('index.html'), res.clone()); }).catch(() => {}));
@@ -51,6 +53,16 @@ self.addEventListener('fetch', (event) => {
   }
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
+    if (DEV) {
+      // local development: always the current files, cache only as offline fallback
+      try {
+        const res = await fetch(req, { cache: 'no-cache' });
+        if (res.ok && res.type === 'basic') cache.put(req, res.clone());
+        return res;
+      } catch (e) {
+        return (await cache.match(req, { ignoreSearch: true })) || new Response('Offline', { status: 503 });
+      }
+    }
     const hit = await cache.match(req, { ignoreSearch: true });
     if (hit) return hit;
     try {

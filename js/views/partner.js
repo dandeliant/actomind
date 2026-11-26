@@ -13,7 +13,7 @@ import { compareText, coverage } from '../core/diff.js';
 import { qualityFromResult } from '../core/srs.js';
 import { wordHint } from '../core/hints.js';
 import { Listener, support } from '../core/speech.js';
-import { speakItem, stopAllSpeech } from '../audio/voice-engine.js';
+import { speakItem, stopAllSpeech, prefetchItem } from '../audio/voice-engine.js';
 import { voiceOf } from '../audio/program.js';
 import { playBeep } from '../audio/beeps.js';
 import { sleep, uid, avg } from '../core/util.js';
@@ -217,6 +217,7 @@ class Rehearsal {
         } else if (item.type === 'line' && !this.mine.has(item.charId)) {
           this.showItem(item, 'partner');
           const text = spokenText(item.text);
+          this.prefetchNext(this.k);
           if (text) await speakItem(this.script, item.charId, text, item.id, { signal });
           this.addHistory(h('span', {}, h('strong', { style: { color: charById(this.script, item.charId)?.color } }, charName(this.script, item.charId) + ': '), text));
           await sleep((voiceOf(this.script, item.charId).pauseAfter ?? 0.6) * 1000, signal);
@@ -235,6 +236,14 @@ class Rehearsal {
       this.k++;
     }
     if (id === this.loopId && this.k >= this.indices.length) this.finish(false);
+  }
+
+  /** Prepare the next partner line in the background (local/cloud voices). */
+  prefetchNext(k) {
+    for (let j = k + 1; j < this.indices.length; j++) {
+      const it = this.items[this.indices[j]];
+      if (it.type === 'line' && !this.mine.has(it.charId)) { prefetchItem(this.script, it.charId, spokenText(it.text), it.id); return; }
+    }
   }
 
   pause() { this.paused = true; this.loopId++; this.ctrl?.abort(); this.stopListening(); stopAllSpeech(); if (this.turn) { this.turn.resolve('restart'); this.turn = null; } this.renderTop(); this.now.appendChild(h('div', { class: 'center', style: { marginTop: '10px' } }, h('span', { class: 'chip orange' }, t('partner.paused')))); }

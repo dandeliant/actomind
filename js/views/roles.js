@@ -3,7 +3,9 @@ import { h, switchEl, linkBtn, banner, toast } from '../ui/dom.js';
 import { setHeader, navigate } from '../ui/shell.js';
 import { t, tn } from '../core/i18n.js';
 import { getScript, saveScript, setActiveScript } from '../core/store.js';
-import { voiceCard, loadWebVoices } from '../ui/voicecast.js';
+import { voiceCard, loadWebVoices, applyAutoCast, moreVoicesTips } from '../ui/voicecast.js';
+import { piperCatalog, downloadedKeys } from '../audio/piper.js';
+import { btn } from '../ui/dom.js';
 import { onVoicesChanged, support } from '../core/speech.js';
 
 export default async function rolesView(root, params) {
@@ -12,6 +14,12 @@ export default async function rolesView(root, params) {
   await setActiveScript(script.id);
   setHeader(t('roles.title'));
   let webVoices = await loadWebVoices();
+  const engine = script.studio.engine === 'piper' ? 'piper' : 'web';
+  let piper = null;
+  if (engine === 'piper') {
+    const catalog = await piperCatalog();
+    piper = { catalog, downloaded: await downloadedKeys(catalog), refresh: () => {} };
+  }
   const counts = new Map();
   script.items.forEach((i) => { if (i.type === 'line') counts.set(i.charId, (counts.get(i.charId) || 0) + 1); });
   const list = h('div');
@@ -20,9 +28,17 @@ export default async function rolesView(root, params) {
   root.append(
     h('h1', {}, t('roles.title')),
     h('p', { class: 'text-2' }, t('roles.intro')),
+    h('div', { class: 'row', style: { marginBottom: '10px' } },
+      btn(t('studio.autoCast'), () => {
+        const n = applyAutoCast(script, engine, { webVoices, piper });
+        toast(n ? t('studio.autoCastDone', { n }) : t('studio.autoCastNone'), { type: n ? 'success' : 'error' });
+        render();
+      }, { cls: 'btn-sm btn-primary', icon: 'sparkles' }),
+      h('span', { class: 'small muted' }, t('roles.engineNote', { engine: t('studio.engineName.' + engine) }))),
+    engine === 'web' ? moreVoicesTips() : null,
     support.tts ? null : banner('warn', 'alert', t('support.noTts')),
     list,
-    h('div', { class: 'card flat' }, h('h3', {}, t('roles.directionsTitle')), h('p', { class: 'small muted' }, t('roles.directionsText')), voiceCard(script, '__dir', { webVoices, title: t('studio.directionsVoice') })),
+    h('div', { class: 'card flat' }, h('h3', {}, t('roles.directionsTitle')), h('p', { class: 'small muted' }, t('roles.directionsText')), voiceCard(script, '__dir', { engine, webVoices, piper, title: t('studio.directionsVoice') })),
     h('div', { class: 'row', style: { justifyContent: 'space-between', marginTop: '16px' } },
       linkBtn(t('roles.studio'), '#/studio', { cls: '', icon: 'headphones' }),
       nextBtn),
@@ -47,7 +63,7 @@ export default async function rolesView(root, params) {
           c.narrator ? h('span', { class: 'chip' }, t('roles.narrator')) : null,
           mine ? h('span', { class: 'chip gold' }, t('common.myRole')) : h('span', { class: 'chip' }, t('roles.partner'))),
         toggle,
-        voiceCard(script, c.id, { webVoices, title: mine ? t('roles.myVoice') : t('roles.partnerVoice'), onColor: () => {} })));
+        voiceCard(script, c.id, { engine, webVoices, piper, title: mine ? t('roles.myVoice') : t('roles.partnerVoice'), onColor: () => {} })));
     }
     nextBtn.classList.toggle('disabled', !script.myRoles.length);
   }

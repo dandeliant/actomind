@@ -20,7 +20,9 @@ function walk(dir) {
   return out;
 }
 
-export const FILES = [...TOP, ...DIRS.flatMap((d) => (fs.existsSync(path.join(ROOT, d)) ? walk(d) : []))].sort();
+// Large on-demand runtimes (Piper: ~30 MB) are not precached at install – the service worker caches them on first use.
+const LAZY = ['vendor/ort/', 'vendor/piper/'];
+export const FILES = [...TOP, ...DIRS.flatMap((d) => (fs.existsSync(path.join(ROOT, d)) ? walk(d) : []))].filter((f) => !LAZY.some((l) => f.startsWith(l))).sort();
 
 export function build() {
   const h = crypto.createHash('sha256');

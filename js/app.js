@@ -133,7 +133,7 @@ async function boot() {
     if (!settings.gamification) return;
     toast(h('span', {}, h('strong', { class: 'gold' }, t('achievements.unlocked') + ' '), t('achievements.' + id + '.title')), { type: 'success' });
   });
-  on('engineFallback', () => toast(t('studio.cloudFallback'), { type: 'error' }));
+  on('engineFallback', (d) => toast(t(d?.engine === 'piper' ? 'studio.piperFallback' : 'studio.cloudFallback'), { type: 'error' }));
   window.addEventListener('online', () => setHeaderRefresh());
   window.addEventListener('offline', () => setHeaderRefresh());
   window.addEventListener('hashchange', () => route());

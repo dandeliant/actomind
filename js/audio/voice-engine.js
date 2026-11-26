@@ -1,25 +1,19 @@
-// ActoMind – unified "speak this line" for Web Speech (live) and Google Cloud TTS (generated audio).
+// ActoMind – unified "speak this line": Web Speech (live), Piper (local neural) and Google Cloud TTS.
 import { speakWeb, cancelSpeech, support } from '../core/speech.js';
-import { synthesizeCloud } from './cloud.js';
 import { lineVoice } from './program.js';
+import { clipRequest, hasVoice, synthesizeClip } from './providers.js';
 import { estimateSpeech } from '../core/timing.js';
 import { sleep, abortError } from '../core/util.js';
 import { emit } from '../core/store.js';
 
 let currentAudio = null;
 
-export function cloudRequest(script, voiceKey, text, itemId, sampleRate = 24000) {
-  const v = lineVoice(script, voiceKey, itemId);
-  return {
-    text,
-    voice: { name: v.cloud.name, languageCode: v.cloud.languageCode || (script.lang === 'en' ? 'en-US' : 'pl-PL') },
-    audioConfig: { speakingRate: v.cloud.speakingRate ?? 1, pitch: v.cloud.pitch ?? 0, volumeGainDb: v.cloud.volumeGainDb ?? 0, sampleRateHertz: sampleRate },
-  };
+export function cloudRequest(script, voiceKey, text, itemId) {
+  return clipRequest(script, 'cloud', voiceKey, text, itemId);
 }
 
 export function hasCloudVoice(script, voiceKey) {
-  const v = lineVoice(script, voiceKey);
-  return !!v.cloud.name;
+  return hasVoice(script, 'cloud', voiceKey);
 }
 
 /** Play an audio blob through an HTMLAudioElement. */
@@ -40,23 +34,23 @@ export function playBlob(blob, { signal, rate = 1, volume = 1 } = {}) {
   });
 }
 
-let warnedFallback = false;
+const warned = new Set();
 /**
  * Speak a line for a character / voice key.
- * @returns {Promise<{engine:'web'|'cloud'|'none'}>}
+ * @returns {Promise<{engine:'web'|'cloud'|'piper'|'none'}>}
  */
 export async function speakItem(script, voiceKey, text, itemId, opts = {}) {
   const { signal, rateScale = 1, volumeScale = 1 } = opts;
   const engine = opts.engine || script.studio?.engine || 'web';
   const v = lineVoice(script, voiceKey, itemId);
-  if (engine === 'cloud' && v.cloud.name) {
+  if ((engine === 'cloud' || engine === 'piper') && hasVoice(script, engine, voiceKey, itemId)) {
     try {
-      const r = await synthesizeCloud(cloudRequest(script, voiceKey, text, itemId), { signal });
+      const r = await synthesizeClip(engine, clipRequest(script, engine, voiceKey, text, itemId), { signal });
       await playBlob(r.blob, { signal, rate: rateScale, volume: volumeScale });
-      return { engine: 'cloud' };
+      return { engine };
     } catch (e) {
       if (e.name === 'AbortError') throw e;
-      if (!warnedFallback) { warnedFallback = true; emit('engineFallback', e.code || e.message); }
+      if (!warned.has(engine)) { warned.add(engine); emit('engineFallback', { engine, code: e.code || e.message }); }
     }
   }
   if (support.tts) {
@@ -67,6 +61,13 @@ export async function speakItem(script, voiceKey, text, itemId, opts = {}) {
   const est = estimateSpeech(text, { lang: script.lang, rate: rateScale });
   await sleep(est.seconds * 1000, signal);
   return { engine: 'none' };
+}
+
+/** Generate the clip of an upcoming line in the background (Piper/Cloud) so playback starts instantly. */
+export function prefetchItem(script, voiceKey, text, itemId) {
+  const engine = script.studio?.engine;
+  if ((engine !== 'cloud' && engine !== 'piper') || !hasVoice(script, engine, voiceKey, itemId)) return;
+  synthesizeClip(engine, clipRequest(script, engine, voiceKey, text, itemId)).catch(() => {});
 }
 
 export function stopAllSpeech() {

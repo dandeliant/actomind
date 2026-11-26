@@ -19,7 +19,7 @@ const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8', '.wav': 'audio/wav',
-  '.mp3': 'audio/mpeg', '.woff2': 'font/woff2',
+  '.mp3': 'audio/mpeg', '.woff2': 'font/woff2', '.wasm': 'application/wasm', '.data': 'application/octet-stream',
 };
 const PUBLIC_FILES = new Set(['index.html', 'manifest.webmanifest', 'sw.js', 'sw-manifest.js', 'favicon.ico']);
 const PUBLIC_DIRS = new Set(['css', 'js', 'vendor', 'icons']);
@@ -299,11 +299,18 @@ export function createApp(cfg = configFromEnv()) {
       const st = await fsp.stat(file);
       if (!st.isFile()) return send(res, 404, 'Not found');
       const ext = path.extname(file).toLowerCase();
-      const noCache = rel === 'sw.js' || rel === 'sw-manifest.js' || rel === 'index.html' || rel === 'manifest.webmanifest';
+      // always revalidate (offline caching is done by the service worker); 304 when unchanged
+      const lastMod = st.mtime.toUTCString();
+      const ims = req.headers['if-modified-since'];
+      if (ims && Math.floor(st.mtimeMs / 1000) <= Math.floor(Date.parse(ims) / 1000)) {
+        res.writeHead(304, { 'last-modified': lastMod, 'cache-control': 'no-cache' });
+        return res.end();
+      }
       res.writeHead(200, {
         'content-type': MIME[ext] || 'application/octet-stream',
         'content-length': st.size,
-        'cache-control': noCache ? 'no-cache' : 'public, max-age=300',
+        'cache-control': 'no-cache',
+        'last-modified': lastMod,
         'x-content-type-options': 'nosniff',
         'referrer-policy': 'no-referrer',
         ...(rel === 'index.html' ? { 'permissions-policy': 'camera=(), geolocation=(), microphone=(self)' } : {}),

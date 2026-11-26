@@ -74,8 +74,16 @@ Serwer przy starcie odświeża listę plików do pracy offline (`sw-manifest.js`
 
 Audio Studio przygotowuje **słuchowisko** i **nagranie treningowe z ciszą** na Twoje kwestie.
 
-### Silniki mowy
-* **Web Speech API** – rzeczywista lista głosów z `speechSynthesis.getVoices()` (obsługa `voiceschanged`, filtr języka, wyróżnienie głosów Google). Działa bez konta. **Nie da się nagrać tego dźwięku do pliku** – to ograniczenie przeglądarek, dlatego eksport MP3/WAV wymaga drugiego silnika.
+### Silniki mowy (trzy do wyboru)
+| Silnik | Koszt / konto | Eksport MP3/WAV | Offline | Głosy |
+|---|---|---|---|---|
+| **Piper** (lokalne głosy neuronowe) | za darmo, bez konta | **tak** – generowane w przeglądarce | tak, po jednorazowym pobraniu głosu (~60 MB) | 5 polskich (gosia, darkman, mc_speech, bass, mls_6892), ~40 angielskich, część z wieloma mówcami (do 904) – oficjalny katalog `rhasspy/piper-voices` |
+| **Web Speech** (głosy przeglądarki/systemu) | za darmo | **tak, przez nagranie** dźwięku (komputer: Chrome/Edge) | zależnie od głosu | lista z `speechSynthesis.getVoices()`; w Edge darmowe głosy naturalne (Zofia, Marek, Agnieszka…) |
+| **Google Cloud TTS** | płatne po darmowym limicie, klucz na serwerze | tak | nie | dziesiątki głosów (Standard/WaveNet/Neural2/Chirp3‑HD) |
+
+* **Piper** działa w Web Workerze (onnxruntime‑web + fonemizer espeak‑ng w WebAssembly, dołączone w `vendor/`). Tekst nie opuszcza urządzenia. Ustawienia na postać: głos, mówca (modele wielomówcowe), tempo, ekspresja, wzmocnienie. Brakujące głosy pobierają się automatycznie przed eksportem.
+* **Nagrywanie głosów przeglądarki**: przeglądarki nie udostępniają syntezy jako pliku, więc ActoMind nagrywa to, co jest odtwarzane – Audio Studio → Eksport → „Rozpocznij nagrywanie dźwięku” → wybierz „Cały ekran” i zaznacz „Udostępnij dźwięk systemowy”. Każda kwestia jest nagrywana osobno, przycinana i normalizowana; cisza jest dodawana cyfrowo. Nie działa na telefonach (brak udostępniania ekranu z dźwiękiem) – tam użyj Piper.
+* **Automatyczna obsada**: jeden przycisk przypisuje każdej postaci inny głos dopasowany do płci odgadniętej z nazwy roli (MATKA, SEKRETARKA → kobiecy; DYREKTOR → męski); gdy głosów jest za mało, zmienia wysokość/tempo/mówcę.
 * **Google Cloud Text-to-Speech** – oficjalne REST API (v1) wywoływane przez backend ActoMind. Klucze nigdy nie trafiają do przeglądarki.
 
 ### Cisza na kwestie aktora
@@ -108,6 +116,8 @@ WAV (zawsze), **MP3** (lamejs w Web Workerze), OGG/Opus (WebCodecs, gdy przeglą
 **Koszty:** Google nalicza opłaty za znaki po przekroczeniu darmowego limitu; ceny zależą od modelu głosu. Studio pokazuje liczbę znaków do syntezy i orientacyjny koszt – sprawdź [aktualny cennik](https://cloud.google.com/text-to-speech/pricing). Fragmenty z pamięci podręcznej są bezpłatne.
 
 **Różnice modeli:** serwer pomija parametry nieobsługiwane przez dany model (np. wysokość głosu w Chirp/Journey/Studio), a jeśli API odrzuci parametr, ponawia żądanie bez niego i zapamiętuje to dla głosu.
+
+**Bez konta Google** wybierz silnik **Piper** – eksport MP3/WAV działa również na GitHub Pages i na telefonie.
 
 **Tryb testowy (dla deweloperów):** `node server/server.js --mock` lub `ACTOMIND_TTS_MOCK=1` – serwer zwraca sygnał testowy (tony) zamiast głosu, aby sprawdzić cały proces eksportu bez konta Google. Aplikacja wyraźnie oznacza ten tryb.
 
@@ -185,12 +195,13 @@ tools/                      – generator listy offline, ikon, kluczy tłumacze�
 tests/                      – testy
 ```
 
-Licencje bibliotek: PDF.js – Apache‑2.0 (Mozilla); lamejs – LGPL (projekt LAME, lame.sourceforge.net). Pliki licencji w `vendor/`.
+Licencje bibliotek: PDF.js – Apache‑2.0 (Mozilla); lamejs – LGPL (projekt LAME, lame.sourceforge.net); onnxruntime‑web – MIT (Microsoft); piper_phonemize – MIT, dane espeak‑ng – GPL‑3.0. Modele głosów Piper pobierane są z `huggingface.co/rhasspy/piper-voices` (licencja każdego modelu w jego MODEL_CARD). Pliki licencji w `vendor/`.
 
 ---
 
 ## Ograniczenia przeglądarek
 * **Rozpoznawanie mowy** (Web Speech) działa w Chrome, Edge i Safari; w Firefoksie nie jest dostępne – aplikacja przełącza się na ocenę ręczną. Zwykle wymaga internetu.
-* **Głosy Web Speech** zależą od systemu; głosy „Google …” w Chrome są sieciowe.
+* **Głosy Web Speech** zależą od systemu; głosy „Google …” w Chrome są sieciowe. Więcej głosów: Microsoft Edge (głosy naturalne), pakiety mowy Windows/Android/iOS albo silnik Piper.
+* **Piper** wymaga przeglądarki z WebAssembly SIMD (Chrome/Edge/Firefox, Safari 16.4+). Pierwsza kwestia generuje się kilka sekund (ładowanie modelu), kolejne ok. 0,5 s.
 * **iOS/Safari**: synteza mowy wymaga gestu użytkownika (przycisk „Start”); OGG/Opus może być niedostępny – użyj MP3.
 * **PDF**: tylko pliki z warstwą tekstową (skany wymagają OCR poza aplikacją).

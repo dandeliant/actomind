@@ -1,7 +1,7 @@
-// ActoMind – Audio Studio export: Google Cloud TTS per line (cached) → measured durations → silence → WAV/MP3/OGG → library/ZIP.
-import { buildProgram, speechRequests, voiceOf, DIR_VOICE } from './program.js';
-import { cloudRequest } from './voice-engine.js';
-import { synthesizeCloud, cachedCloud, cloudKey } from './cloud.js';
+// ActoMind – Audio Studio export: one clip per line (Google Cloud TTS, local Piper voices or recorded browser voices),
+// cached → measured durations → digital silence → WAV/MP3/OGG → library/ZIP.
+import { buildProgram, speechRequests, engineRate, DIR_VOICE, selectRange } from './program.js';
+import { clipRequest, clipKey, hasVoice, synthesizeClip, SYNTH_RATE } from './providers.js';
 import { renderProgramToWav } from './render.js';
 import { parseWav } from './wav.js';
 import { encodeMp3, encodeOpus, estimateSize } from './encoders.js';
@@ -13,7 +13,8 @@ import { uid, safeFileName, abortError } from '../core/util.js';
 import { charById, bumpTotal } from '../core/store.js';
 
 export const VARIANTS = ['full', 'rehearsal', 'hints', 'mine'];
-export const SYNTH_RATE = 24000;
+export { SYNTH_RATE };
+export const EXPORT_ENGINES = ['cloud', 'piper', 'web'];
 const VARIANT_SUFFIX = { full: 'Pelne_Sluchowisko', rehearsal: 'Proba', hints: 'Podpowiedzi', mine: 'Moje_Kwestie', repeat: 'Powtorz', dress: 'Proba_Generalna' };
 const VARIANT_SUFFIX_EN = { full: 'Full_Audio_Drama', rehearsal: 'Rehearsal', hints: 'Prompts', mine: 'My_Lines', repeat: 'Listen_Repeat', dress: 'Dress_Rehearsal' };
 
@@ -30,17 +31,17 @@ export function fileNameFor(script, variant, ext) {
  * Collect every speech clip needed for the given variants (plus own lines for silence measurement).
  * @returns {{list:{voiceKey,text,itemId,req,key}[], missingVoices:string[]}}
  */
-export async function collectRequests(script, variants, range, { measure = true } = {}) {
+export async function collectRequests(script, variants, range, { measure = true, engine = script.studio?.engine || 'web' } = {}) {
   const map = new Map();
   const missing = new Set();
   const add = (voiceKey, text, itemId, forMeasure = false) => {
     const id = k3(voiceKey, itemId, text);
     if (map.has(id)) return;
-    if (!voiceOf(script, voiceKey).cloud.name && !(script.studio.lineOverrides?.[itemId]?.voiceFrom)) {
+    if (!hasVoice(script, engine, voiceKey, itemId)) {
       if (!forMeasure) missing.add(voiceKey);
       return;
     }
-    map.set(id, { voiceKey, text, itemId, req: cloudRequest(script, voiceKey, text, itemId, SYNTH_RATE), forMeasure });
+    map.set(id, { voiceKey, text, itemId, req: clipRequest(script, engine, voiceKey, text, itemId), forMeasure });
   };
   for (const v of variants) {
     const prog = buildProgram(script, { mode: v, range });
@@ -48,7 +49,6 @@ export async function collectRequests(script, variants, range, { measure = true 
   }
   if (measure) {
     const mine = new Set(script.myRoles);
-    const { selectRange } = await import('./program.js');
     for (const i of selectRange(script, range).indices) {
       const it = script.items[i];
       if (it.type === 'line' && mine.has(it.charId)) {
@@ -58,8 +58,8 @@ export async function collectRequests(script, variants, range, { measure = true 
     }
   }
   const list = [...map.values()];
-  for (const x of list) x.key = await cloudKey(x.req);
-  return { list, missingVoices: [...missing] };
+  for (const x of list) x.key = await clipKey(engine, x.req);
+  return { list, missingVoices: [...missing], engine };
 }
 
 /** Billable characters not yet cached locally. */
@@ -71,9 +71,10 @@ export async function costPreview(script, variants, range, opts = {}) {
   for (const x of list) {
     if (await db.get('tts', x.key)) { cached++; continue; }
     chars += x.text.length;
-    byVoice.set(x.req.voice.name, (byVoice.get(x.req.voice.name) || 0) + x.text.length);
+    const name = x.req.voice?.name || x.req.voice || x.req.voiceURI || 'default';
+    byVoice.set(name, (byVoice.get(name) || 0) + x.text.length);
   }
-  return { total: list.length, cached, chars, byVoice, missingVoices };
+  return { total: list.length, cached, chars, byVoice, missingVoices, engine: opts.engine || script.studio?.engine };
 }
 
 /** Duration map from the local cache (no network). */
@@ -92,8 +93,7 @@ export function durationFn(script, durMap) {
   return (item, text, voiceKey) => {
     const d = durMap.get(k3(voiceKey, item.id, text));
     if (d != null) return { seconds: d, approx: false };
-    const v = voiceOf(script, voiceKey);
-    return estimateSpeech(text, { lang, rate: script.studio.engine === 'cloud' ? v.cloud.speakingRate : v.web.rate });
+    return estimateSpeech(text, { lang, rate: engineRate(script, voiceKey, item.id) });
   };
 }
 
@@ -101,12 +101,14 @@ export function durationFn(script, durMap) {
  * Generate audio files.
  * @param {object} script
  * @param {{variants:string[], range:object, format:'wav'|'mp3'|'ogg', sampleRate:number, kbps:number, zip:boolean,
- *          profile:object|null, rangeLabel:string, onProgress:(p:object)=>void, signal:AbortSignal}} o
+ *          profile:object|null, rangeLabel:string, onProgress:(p:object)=>void, signal:AbortSignal,
+ *          engine?:'cloud'|'piper'|'web', capture?:object}} o  capture = active SpeechCapture for engine 'web'
  */
 export async function exportAudio(script, o) {
   const p = (x) => o.onProgress?.(x);
-  // 1. synthesis (each distinct clip once, cached locally and on the server)
-  const { list, missingVoices } = await collectRequests(script, o.variants, o.range, { measure: script.studio.measureWithTts !== false });
+  const engine = o.engine || script.studio.engine || 'web';
+  // 1. one clip per distinct line (cached locally; Google clips also on the server)
+  const { list, missingVoices } = await collectRequests(script, o.variants, o.range, { measure: script.studio.measureWithTts !== false, engine });
   if (missingVoices.length) {
     const e = new Error('MISSING_VOICES');
     e.code = 'MISSING_VOICES';
@@ -121,8 +123,8 @@ export async function exportAudio(script, o) {
     p({ phase: 'synth', done: i, total: list.length, voiceKey: x.voiceKey, text: x.text });
     let r;
     for (let attempt = 0; ; attempt++) {
-      try { r = await synthesizeCloud(x.req, { signal: o.signal }); break; } catch (e) {
-        if (e.name === 'AbortError' || attempt >= 2 || (e.status && e.status < 500 && e.status !== 429)) throw e;
+      try { r = await synthesizeClip(engine, x.req, { signal: o.signal, capture: o.capture }); break; } catch (e) {
+        if (e.name === 'AbortError' || attempt >= 2 || (e.status && e.status < 500 && e.status !== 429) || (e.code && e.code !== 'CAPTURE_SILENT')) throw e;
         await new Promise((res) => setTimeout(res, 800 * (attempt + 1)));
       }
     }

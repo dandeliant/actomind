@@ -30,6 +30,7 @@ export function defaultVoice(lang = 'pl-PL') {
   return {
     web: { voiceURI: '', lang, rate: 1, pitch: 1, volume: 1 },
     cloud: { name: '', languageCode: lang, speakingRate: 1, pitch: 0, volumeGainDb: 0 },
+    piper: { voice: '', speaker: 0, rate: 1, expressive: null, gain: 0 },
     pauseBefore: 0,
     pauseAfter: 0.6,
   };
@@ -39,7 +40,7 @@ export function voiceOf(script, key) {
   const v = script.voices?.[key];
   const d = defaultVoice(script.lang === 'en' ? 'en-US' : 'pl-PL');
   if (!v) return d;
-  return { ...d, ...v, web: { ...d.web, ...(v.web || {}) }, cloud: { ...d.cloud, ...(v.cloud || {}) } };
+  return { ...d, ...v, web: { ...d.web, ...(v.web || {}) }, cloud: { ...d.cloud, ...(v.cloud || {}) }, piper: { ...d.piper, ...(v.piper || {}) } };
 }
 
 /**
@@ -54,7 +55,16 @@ export function lineVoice(script, voiceKey, itemId) {
     ...base,
     web: { ...base.web, rate: Math.max(0.3, Math.min(3, base.web.rate * ov.rate)) },
     cloud: { ...base.cloud, speakingRate: Math.max(0.25, Math.min(4, base.cloud.speakingRate * ov.rate)) },
+    piper: { ...base.piper, rate: Math.max(0.5, Math.min(2, (base.piper.rate || 1) * ov.rate)) },
   };
+}
+
+/** Speaking-rate multiplier of a voice for the active engine (used for time estimates). */
+export function engineRate(script, voiceKey, itemId, engine = script.studio?.engine) {
+  const v = lineVoice(script, voiceKey, itemId);
+  if (engine === 'cloud') return v.cloud.speakingRate || 1;
+  if (engine === 'piper') return v.piper.rate || 1;
+  return v.web.rate || 1;
 }
 
 /** Text actually spoken for an item (inline stage directions are never read as dialogue). */
@@ -152,8 +162,7 @@ export function buildProgram(script, opts = {}) {
   const turnBeeps = beepsForTurn(beepStyle);
   const { indices, breaks } = selectRange(script, opts.range);
   const durationOf = opts.durationOf || ((item, text, voiceKey) => {
-    const v = lineVoice(script, voiceKey, item.id);
-    return estimateSpeech(text, { lang, rate: studio.engine === 'cloud' ? v.cloud.speakingRate : v.web.rate });
+    return estimateSpeech(text, { lang, rate: engineRate(script, voiceKey, item.id, studio.engine) });
   });
   const segs = [];
   const push = (s) => { segs.push(s); };

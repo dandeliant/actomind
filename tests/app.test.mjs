@@ -41,6 +41,10 @@ const DYNAMIC = {
   'trainer.vanish.levelHint.*': ['0', '25', '50', '75', '90', '100'],
   'tutorial.*.title': ['welcome', 'import', 'role', 'learn', 'partner', 'studio', 'privacy'], 'tutorial.*.text': ['welcome', 'import', 'role', 'learn', 'partner', 'studio', 'privacy'],
   'voices.gender.*': ['FEMALE', 'MALE', 'NEUTRAL'],
+  'studio.cast.*': ['web', 'piper', 'cloud'], 'studio.engineName.*': ['web', 'piper', 'cloud'],
+  'studio.capture.*': ['s1', 's2', 's3', 's4', 'silent', 'stopped'],
+  'voices.more.*': ['piper', 'edge', 'windows', 'android', 'apple', 'chrome'],
+  'piper.quality.*': ['x_low', 'low', 'medium', 'high'],
   'stt.*': ['errNotAllowed', 'errNoMic', 'errNetwork', 'errNoSpeech', 'errStart', 'errGeneric'],
 };
 

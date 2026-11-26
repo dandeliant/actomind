@@ -1,5 +1,5 @@
 // ActoMind – live playback of a program with Web Speech / cached cloud audio, silences and signals.
-import { speakItem, stopAllSpeech } from './voice-engine.js';
+import { speakItem, stopAllSpeech, prefetchItem } from './voice-engine.js';
 import { playBeep } from './beeps.js';
 import { sleep } from '../core/util.js';
 
@@ -135,6 +135,8 @@ export class LivePlayer extends EventTarget {
       this.elapsedInSeg = 0;
       try {
         if (seg.kind === 'speech') {
+          const nx = this.segments.slice(this.index + 1).find((x) => x.kind === 'speech');
+          if (nx) prefetchItem(this.script, nx.voiceKey, nx.text, nx.itemId);
           await speakItem(this.script, seg.voiceKey, seg.text, seg.itemId, { signal, rateScale: this.rate, volumeScale: this.volume });
         } else if (seg.kind === 'silence') {
           const total = seg.role === 'gap' ? seg.seconds * this.gapScale : seg.seconds;
