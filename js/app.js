@@ -113,8 +113,10 @@ function registerSW() {
       });
     });
   }).catch((e) => console.warn('SW registration failed', e));
+  // reload only when an existing version is replaced (update), not when the first SW takes control
+  const hadController = !!navigator.serviceWorker.controller;
   let reloaded = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
 }
 
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); window.__actomindInstall = e; });
