@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "actomind-mock",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server/server.js", "--port", "8091", "--mock"],
+      "port": 8091
+    },
+    {
+      "name": "actomind",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server/server.js", "--port", "8090"],
+      "port": 8090
+    }
+  ]
+}

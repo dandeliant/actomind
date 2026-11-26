@@ -1,0 +1,24 @@
+{
+  "name": "ActoMind – Your Personal Acting Coach",
+  "short_name": "ActoMind",
+  "description": "Learn your lines. Live your role. Trener pamięci, mentor aktorski i wirtualny partner sceniczny.",
+  "lang": "pl",
+  "start_url": "./#/",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "categories": ["education", "entertainment", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Próba z partnerem", "short_name": "Próba", "url": "./#/rehearse/partner", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Powtórki", "short_name": "Powtórki", "url": "./#/learn/train/review", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
